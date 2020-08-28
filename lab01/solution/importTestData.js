@@ -1,21 +1,29 @@
-const {readFile}  = require('fs').promises;
 const {promisify} = require('util');
 const parse       = promisify(require('csv-parse'));
+const {readFile}  = require('fs').promises;
 const {Firestore} = require('@google-cloud/firestore');
+const {Logging} = require('@google-cloud/logging');        //これを追加します
+const logName = 'pet-theory-logs-importTestData';
+
+// Logging クライアントの作成
+const logging = new Logging();
+const log = logging.log(logName);
+
+const resource = {
+  type: 'global',
+};
 
 if (process.argv.length < 3) {
   console.error('Please include a path to a csv file');
   process.exit(1);
 }
-
-
 const db = new Firestore();
 
 function writeToFirestore(records) {
   const batchCommits = [];
   let batch = db.batch();
   records.forEach((record, i) => {
-    var docRef = db.collection('customers').doc(record.id);
+    var docRef = db.collection('customers').doc(record.email);
     batch.set(docRef, record);
     if ((i + 1) % 500 === 0) {
       console.log(`Writing record ${i + 1}`);
@@ -39,13 +47,17 @@ async function importCsv(csvFileName) {
   const records = await parse(fileContents, { columns: true });
   try {
     await writeToFirestore(records);
-    //await writeToDatabase(records);
+    // await writeToDatabase(records);
   }
   catch (e) {
     console.error(e);
     process.exit(1);
   }
   console.log(`Wrote ${records.length} records`);
+  // テキスト ログエントリ
+  success_message = `Success: importTestData - Wrote ${records.length} records`
+  const entry = log.entry({resource: resource}, {message: `${success_message}`});
+  log.write([entry]);
 }
 
 importCsv(process.argv[2]).catch(e => console.error(e));
